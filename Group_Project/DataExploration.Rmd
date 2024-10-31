@@ -1,0 +1,116 @@
+---
+title: "Border_Crossings"
+author: "Ankit Regmi"
+date: "2024-10-29"
+output: html_document
+---
+
+```{r}
+
+
+
+# Load necessary libraries
+library(readr)
+library(dplyr)
+library(lubridate)
+
+# Load the dataset
+border_data <- read_csv("~/Group_Project/Border_Crossing_Entry_Data.csv")
+
+# Remove the time part from the Date column and parse the date
+border_data <- border_data %>%
+  mutate(Date = sub(" .*", "", Date),  # Remove time component
+         Date = mdy(Date),             # Parse the date
+         Year = year(Date),
+         Month = month(Date, label = TRUE),
+         DayOfWeek = wday(Date, label = TRUE),
+         Quarter = quarter(Date))
+
+# Main summary without year
+summary_stats <- border_data %>%
+  group_by(Border, Measure) %>%
+  summarise(Total_Crossings = sum(Value, na.rm = TRUE),
+            Avg_Crossings = mean(Value, na.rm = TRUE),
+            Median_Crossings = median(Value, na.rm = TRUE),
+            Max_Crossings = max(Value, na.rm = TRUE),
+            Min_Crossings = min(Value, na.rm = TRUE),
+            .groups = 'drop')
+
+# Yearly total crossings per border and measure
+yearly_totals <- border_data %>%
+  group_by(Year, Border, Measure) %>%
+  summarise(Total_Crossings = sum(Value, na.rm = TRUE), .groups = 'drop')
+
+# Print main summary
+print("Summary Statistics (without Year breakdown):")
+print(summary_stats)
+
+
+# Print yearly totals summary
+print("Yearly Total Crossings per Border and Measure:")
+print(yearly_totals)
+
+
+```
+
+
+
+
+
+```{r}
+
+
+
+# Aggregate data by Month and DayOfWeek
+monthly_trend <- border_data %>%
+  group_by(Month, Measure) %>%
+  summarise(Total_Crossings = sum(Value, na.rm = TRUE)) %>%
+  arrange(desc(Total_Crossings))
+
+# Plot Monthly Trends
+ggplot(monthly_trend, aes(x = Month, y = Total_Crossings, fill = Measure)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Total Border Crossings by Month",
+       x = "Month", y = "Total Crossings") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Aggregate data by DayOfWeek for additional insights
+day_trend <- border_data %>%
+  group_by(DayOfWeek, Measure) %>%
+  summarise(Total_Crossings = sum(Value, na.rm = TRUE)) %>%
+  arrange(desc(Total_Crossings))
+
+# Plot Weekly Trends
+ggplot(day_trend, aes(x = DayOfWeek, y = Total_Crossings, fill = Measure)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Total Border Crossings by Day of the Week",
+       x = "Day of the Week", y = "Total Crossings") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r}
+# Aggregate data by Year and Month for yearly monthly trend
+yearly_monthly_trend <- border_data %>%
+  group_by(Year, Month) %>%
+  summarise(Total_Crossings = sum(Value, na.rm = TRUE)) %>%
+  arrange(Year, Month)
+# Plot Yearly Monthly Trends as a Heatmap
+ggplot(yearly_monthly_trend, aes(x = Month, y = as.factor(Year), fill = Total_Crossings)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue", labels = scales::comma) +
+  labs(title = "Heatmap of Monthly Border Crossings by Year",
+       x = "Month", y = "Year", fill = "Total Crossings") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+
+
+
+
+

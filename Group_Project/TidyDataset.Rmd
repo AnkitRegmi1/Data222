@@ -1,0 +1,85 @@
+---
+title: "TidyDatasets"
+author: "Ankit Regmi"
+date: "2024-10-29"
+output: _document
+---
+
+```{r setup, include=FALSE}
+# Load necessary libraries
+library(readr)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(scales)  # Needed for the comma format
+
+# Load the dataset
+border_data <- read_csv("~/Group_Project/Border_Crossing_Entry_Data.csv")
+
+# Clean and parse the date, and create new columns
+border_data <- border_data %>%
+  mutate(Date = sub(" .*", "", Date),  # Remove time component
+         Date = mdy(Date),             # Parse the date
+         Year = year(Date),
+         Month = month(Date, label = TRUE),
+         DayOfWeek = wday(Date, label = TRUE))  # Removed Quarter
+
+# Select relevant columns and create a tidy dataset
+border_data_tidy <- border_data %>%
+  select(`Port Name`, State, `Port Code`, Border, Date, Measure, Value, Year, Month, DayOfWeek)
+
+# Randomly sample 50,000 observations to create a manageable subset for analysis
+set.seed(1)
+border_sample <- border_data_tidy %>%
+  filter(!is.na(Value) & Value > 0 & !is.na(Year)) %>%
+  sample_n(min(50000, n()))
+
+# Save the tidy sample as a CSV for further use
+write_csv(border_sample, "Border_Sample_Tidy.csv")
+
+```
+
+```{r}
+head(border_data$Date)
+
+```
+
+
+
+```{r}
+# Boxplot of Crossing Volume Distribution by Measure Type
+ggplot(border_data, aes(x = Measure, y = Value)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Crossing Volumes by Measure",
+       x = "Measure Type",
+       y = "Crossing Volume") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(labels = scales::comma)
+
+```
+
+
+```{r}
+  pv_data <- border_data %>% 
+  filter(Measure == "Personal Vehicle Passengers" & !is.na(Year)) %>%
+  group_by(Year) %>%
+  summarise(Total_Crossings = sum(Value, na.rm = TRUE))
+
+# Run a linear regression
+linear_model <- lm(Total_Crossings ~ Year, data = pv_data)
+
+# Summary of the linear model
+summary(linear_model)
+
+# Plot the yearly trend with the regression line
+ggplot(pv_data, aes(x = Year, y = Total_Crossings)) +
+  geom_point(color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = FALSE) +
+  labs(title = "Yearly Trend of Personal Vehicle Passenger Crossings",
+       x = "Year", y = "Total Crossings") +
+  theme_minimal()
+```
+
+
+
