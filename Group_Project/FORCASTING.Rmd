@@ -1,0 +1,201 @@
+---
+title: "forescasting_the_future"
+author: "Ankit Regmi"
+date: "2024-11-24"
+output: word_document
+---
+
+```{r}
+# Loading necessary libraries
+install.packages("randomForest")
+install.packages("lubridate")
+install.packages("readr")
+install.packages("dplyr")
+install.packages("caret")
+install.packages("tidyr")
+install.packages("ggplot2")
+
+library(randomForest)
+library(lubridate)
+library(readr)
+library(dplyr)
+library(caret)
+library(tidyr)
+library(ggplot2)
+
+# Loading the dataset
+border_data <- read_csv("Border_Crossing_Entry_Data.csv")
+border_data$Date <- as.Date(border_data$Date, format = "%m/%d/%Y")
+
+# Preparing the data: Aggregate and add features
+prepare_data <- function(data, border_name) {
+  holidays <- data.frame(
+    Date = as.Date(c("2015-07-01", "2015-12-25", "2016-07-01", "2016-12-25",
+                     "2017-07-01", "2017-12-25", "2018-07-01", "2018-12-25")),
+    holiday_flag = 1
+  )
+  
+  data <- data %>%
+    filter(Border == border_name) %>%
+    group_by(Date) %>%
+    reframe(
+      Total_Crossings = sum(Value, na.rm = TRUE),
+      Personal_Vehicles = sum(Value[Measure == "Personal Vehicles"], na.rm = TRUE),
+      Pedestrians = sum(Value[Measure == "Pedestrians"], na.rm = TRUE),
+      Trucks = sum(Value[Measure == "Trucks"], na.rm = TRUE),
+      holiday_flag = ifelse(Date %in% holidays$Date, 1, 0)
+    ) %>%
+    mutate(
+      Year = year(Date),
+      Month = month(Date),
+      DayOfWeek = wday(Date, label = TRUE, abbr = TRUE),
+      Season = case_when(
+        Month %in% c(6, 7, 8) ~ "Summer",
+        Month %in% c(12, 1, 2) ~ "Winter",
+        TRUE ~ "Other"
+      )
+    ) %>%
+    replace_na(list(Personal_Vehicles = 0, Pedestrians = 0, Trucks = 0))
+  return(data)
+}
+
+# Prepare data for Canada and Mexico
+canada_data <- prepare_data(border_data, "US-Canada Border")
+mexico_data <- prepare_data(border_data, "US-Mexico Border")
+
+# Split data into training (1996–2014) and testing (2015–2020)
+split_data <- function(data) {
+  train <- data %>% filter(Year < 2015)
+  test <- data %>% filter(Year >= 2015 & Year <= 2020)
+  return(list(train = train, test = test))
+}
+
+canada_split <- split_data(canada_data)
+mexico_split <- split_data(mexico_data)
+
+# Encode categorical variables for Random Forest
+encode_features <- function(data) {
+  data <- data %>%
+    mutate(
+      Season_Summer = ifelse(Season == "Summer", 1, 0),
+      Season_Winter = ifelse(Season == "Winter", 1, 0),
+      Season_Other = ifelse(Season == "Other", 1, 0)
+    ) %>%
+    select(-Season)
+  return(data)
+}
+
+canada_split$train <- encode_features(canada_split$train)
+canada_split$test <- encode_features(canada_split$test)
+mexico_split$train <- encode_features(mexico_split$train)
+mexico_split$test <- encode_features(mexico_split$test)
+
+# Align train and test columns
+align_features <- function(train, test) {
+  test <- test[, colnames(train)]
+  return(test)
+}
+
+canada_split$test <- align_features(canada_split$train, canada_split$test)
+mexico_split$test <- align_features(mexico_split$train, mexico_split$test)
+
+# Train and evaluate Random Forest model
+train_and_evaluate_rf <- function(train_data, test_data, border_name) {
+  # Define features and target
+  features <- setdiff(colnames(train_data), c("Total_Crossings", "Date"))
+  target <- "Total_Crossings"
+  
+  # Train Random Forest
+  rf_model <- randomForest(
+    formula = as.formula(paste(target, "~", paste(features, collapse = "+"))),
+    data = train_data,
+    ntree = 1000,       
+    mtry = 4,           
+    maxnodes = 50,    
+    importance = TRUE
+  )
+  
+  # Predict on test data
+  test_data$rf_pred <- predict(rf_model, test_data)
+  
+  # Evaluate metrics
+  mape <- mean(abs((test_data$Total_Crossings - test_data$rf_pred) / test_data$Total_Crossings)) * 100
+  rmse <- sqrt(mean((test_data$Total_Crossings - test_data$rf_pred)^2))
+  
+  cat(border_name, "Random Forest MAPE:", round(mape, 2), "%\n")
+  cat(border_name, "Random Forest RMSE:", round(rmse, 2), "\n")
+  
+  return(list(model = rf_model, test_data = test_data, mape = mape, rmse = rmse))
+}
+
+# Train and evaluate for Canada and Mexico
+canada_results <- train_and_evaluate_rf(canada_split$train, canada_split$test, "Canada")
+mexico_results <- train_and_evaluate_rf(mexico_split$train, mexico_split$test, "Mexico")
+
+# Plot Actual vs Predicted
+plot_actual_vs_predicted <- function(test_data, border_name) {
+  ggplot(test_data, aes(x = Date)) +
+    geom_line(aes(y = Total_Crossings, color = "Actual"), size = 1) +
+    geom_line(aes(y = rf_pred, color = "Predicted"), size = 1, linetype = "dashed") +
+    labs(title = paste("U.S.-", border_name, "Border Crossings: Actual vs Predicted (2015–2020)", sep = ""),
+         x = "Year", y = "Crossings") +
+    scale_color_manual(values = c("Actual" = "blue", "Predicted" = "red")) +
+    theme_minimal()
+}
+
+plot_actual_vs_predicted(canada_results$test_data, "Canada")
+plot_actual_vs_predicted(mexico_results$test_data, "Mexico")
+
+
+```
+
+```{r}
+# Forecast future data for 2020–2026
+forecast_future <- function(model, start_date, end_date, border_name) {
+  # Generate future dates
+  future_dates <- seq.Date(from = as.Date(start_date), to = as.Date(end_date), by = "month")
+  
+  # Create a future dataframe with features
+  future_data <- data.frame(
+    Date = future_dates,
+    Year = year(future_dates),
+    Month = month(future_dates),
+    DayOfWeek = wday(future_dates, label = TRUE, abbr = TRUE),
+    Season_Summer = ifelse(month(future_dates) %in% c(6, 7, 8), 1, 0),
+    Season_Winter = ifelse(month(future_dates) %in% c(12, 1, 2), 1, 0),
+    Season_Other = ifelse(!(month(future_dates) %in% c(6, 7, 8, 12, 1, 2)), 1, 0),
+    holiday_flag = 0,
+    Personal_Vehicles = 0,  
+    Pedestrians = 0,
+    Trucks = 0
+  )
+  
+  # Predict future total crossings
+  future_data$Total_Crossings <- predict(model, future_data)
+  
+  # Save forecast to CSV
+  write_csv(future_data, paste0(border_name, "_Forecast_2020_2026.csv"))
+  
+  return(future_data)
+}
+
+# Forecast for Canada
+canada_forecast <- forecast_future(canada_results$model, "2020-01-01", "2026-12-31", "Canada")
+
+# Forecast for Mexico
+mexico_forecast <- forecast_future(mexico_results$model, "2020-01-01", "2026-12-31", "Mexico")
+
+# Plot the forecasts
+plot_forecast <- function(forecast_data, border_name) {
+  ggplot(forecast_data, aes(x = Date, y = Total_Crossings)) +
+    geom_line(color = ifelse(border_name == "Canada", "darkblue", "darkred"), size = 1) +
+    labs(title = paste("Forecasted U.S.-", border_name, "Border Crossings (2020–2026)", sep = ""),
+         x = "Year", y = "Total Crossings") +
+    theme_minimal()
+}
+
+plot_forecast(canada_forecast, "Canada")
+plot_forecast(mexico_forecast, "Mexico")
+
+```
+

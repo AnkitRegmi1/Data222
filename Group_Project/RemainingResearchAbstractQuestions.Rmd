@@ -1,0 +1,95 @@
+---
+title: "ReserachAbstractInterpretations"
+author: "Ankit Regmi"
+date: "2024-12-05"
+output: word_document
+---
+
+# Analyzing the Border Crossing Patterns by Measure
+```{r}
+# Loadingnecessary libraries
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(scales)
+
+# Loading the tidy dataset
+border_sample <- read_csv("Border_Sample_Tidy.csv")
+
+
+border_patterns <- border_sample %>%
+  group_by(Border, Measure) %>%
+  summarise(Total_Value = sum(Value), .groups = 'drop')
+
+
+ggplot(border_patterns, aes(x = Total_Value, y = Measure, fill = Border)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_x_log10(labels = comma) +  # Log scale for better visualization
+  labs(
+    title = "Border Crossing Patterns by Measure and Border",
+    x = "Total Crossing Volume (log scale)",
+    y = "Measure"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_text(size = 10))
+
+```
+
+The plot above shows the crossing patterns by measure (type of activity) and border:
+
+US-Canada Border: Dominated by measures like personal vehicle passengers and truck-related activities.
+US-Mexico Border: Higher volumes of pedestrians and personal vehicle passengers compared to US-Canada.
+This suggests different usage patterns for each border, likely due to geographic, economic, and cultural factors.
+
+# Analyzing Border Crossing Rates Over Time
+```{r}
+
+time_trends <- border_sample %>%
+  group_by(Year, Border) %>%
+  summarise(Total_Value = sum(Value), .groups = 'drop')
+
+
+ggplot(time_trends, aes(x = Year, y = Total_Value, color = Border)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Border Crossing Rates Over Time",
+    x = "Year",
+    y = "Total Crossing Volume"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_text(size = 10))
+
+```
+
+The line chart above illustrates how border crossing rates have changed over time for the U.S.-Canada and U.S.-Mexico borders:
+
+U.S.-Canada Border: A relatively stable pattern, with minor fluctuations over the years.
+U.S.-Mexico Border: Displays more variability, with significant peaks and troughs, possibly due to policy changes, economic factors, or seasonal influences.
+# Analyzing the Effect of Variables on Border Crossings
+
+```{r}
+# Calculating the mean crossing value by Border and Measure
+measure_effect <- border_sample %>%
+  group_by(Border, Measure) %>%
+  summarise(Average_Value = mean(Value), .groups = 'drop')
+
+
+ggplot(measure_effect, aes(x = Average_Value, y = Measure, fill = Border)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_x_log10(labels = comma) +  # Log scale for better visualization
+  labs(
+    title = "Effect of Measure on Border Crossings",
+    x = "Average Crossing Volume (log scale)",
+    y = "Measure"
+  ) +
+  theme_minimal() +
+  theme(legend.title = element_text(size = 10))
+
+```
+
+The bar chart above shows how different measures (crossing types) impact U.S.-Canada and U.S.-Mexico border crossings:
+
+U.S.-Canada Border: Higher average volumes for truck-related activities, indicating the prominence of trade and freight transport.
+U.S.-Mexico Border: Higher pedestrian and personal vehicle passenger activity, suggesting a focus on individual and commuter crossings.
